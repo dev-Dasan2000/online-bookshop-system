@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import Cookies from 'js-cookie';
@@ -9,11 +9,18 @@ interface User {
   name: string;
 }
 
+interface LoginResult {
+  success: boolean;
+  needsVerification?: boolean;
+  email?: string;
+  message?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string, remember: boolean) => Promise<boolean>;
+  login: (email: string, password: string, remember: boolean) => Promise<LoginResult>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
   verifyEmail: (email: string, code: string) => Promise<boolean>;
@@ -21,98 +28,169 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const TOKEN_COOKIE_NAME = 'token';
+const TOKEN_PATH = '/';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  const fetchUser = useCallback(async (token: string) => {
+    try {
+      const { data } = await axios.get('/api/user/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (data && data.email) {
+        setUser(data);
+        setIsAuthenticated(true);
+      } else {
+        clearAuthState();
+      }
+    } catch (error) {
+      console.error('Failed to fetch user:', error);
+      clearAuthState();
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const clearAuthState = useCallback(() => {
+    Cookies.remove(TOKEN_COOKIE_NAME, { path: TOKEN_PATH });
+    setUser(null);
+    setIsAuthenticated(false);
+  }, []);
+
+  const handleTokenChange = useCallback(() => {
+    const newToken = Cookies.get(TOKEN_COOKIE_NAME);
+    if (newToken && !isAuthenticated) {
+      fetchUser(newToken);
+    } else if (!newToken && isAuthenticated) {
+      setUser(null);
+      setIsAuthenticated(false);
+    }
+  }, [fetchUser, isAuthenticated]);
+
   useEffect(() => {
-    // Check if user is logged in
-    const token = Cookies.get('token');
+    const token = Cookies.get(TOKEN_COOKIE_NAME);
+    
     if (token) {
       fetchUser(token);
     } else {
       setIsLoading(false);
     }
-  }, []);
 
-  const fetchUser = async (token: string) => {
-    try {
-      const config = {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      };
-      
-      const { data } = await axios.get('/api/user/profile', config);
-      setUser(data);
-      setIsAuthenticated(true);
-    } catch (error) {
-      console.error('Failed to fetch user:', error);
-      Cookies.remove('token');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    // Listen for token changes (like from login/logout in another tab)
+    window.addEventListener('storage', handleTokenChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleTokenChange);
+    };
+  }, [fetchUser, handleTokenChange]);
 
-  const login = async (email: string, password: string, remember: boolean): Promise<boolean> => {
+  const login = async (email: string, password: string, remember: boolean) => {
     try {
       // Save local cart before login
       const localCart = localStorage.getItem('cart');
       
       const { data } = await axios.post('/api/auth/login', { email, password });
-      Cookies.set('token', data.token, { expires: remember ? 30 : 1 });
-      setUser(data.user);
-      setIsAuthenticated(true);
       
-      // If we have a local cart, we should preserve it or merge it with server cart
-      // This is a simplified version - in a real app, you'd want to merge with the server cart
-      if (localCart) {
-        localStorage.setItem('cart', localCart);
+      if (data.successful) {
+        // Set cookie with path and secure settings for persistence
+        Cookies.set(TOKEN_COOKIE_NAME, data.token, { 
+          expires: remember ? 30 : 1,
+          path: TOKEN_PATH,
+          sameSite: 'strict',
+          secure: location.protocol === 'https:'
+        });
+        
+        setUser(data.user);
+        setIsAuthenticated(true);
+        
+        // Preserve local cart
+        if (localCart) {
+          localStorage.setItem('cart', localCart);
+        }
+        
+        toast.success('Logged in successfully');
+        return { success: true };
+      } else if (data.needsVerification) {
+        toast.warning('Email verification required before login');
+        return { 
+          success: false, 
+          needsVerification: true, 
+          email: data.email,
+          message: data.message
+        };
+      } else {
+        toast.error(data.message || 'Login failed');
+        return { 
+          success: false, 
+          message: data.message || 'Login failed. Please check your credentials.'
+        };
       }
-      
-      toast.success('Logged in successfully');
-      return true;
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || 'Login failed. Please check your credentials.';
       console.error('Login failed:', error);
-      toast.error('Login failed. Please check your credentials.');
-      return false;
+      toast.error(`Login failed: ${errorMessage}`);
+      return { success: false, message: errorMessage };
     }
   };
 
   const register = async (name: string, email: string, password: string): Promise<boolean> => {
     try {
-      await axios.post('/api/user/register', { name, email, password });
-      toast.success('Registration successful! Please verify your email.');
-      return true;
-    } catch (error) {
+      const { data } = await axios.post('/api/user/register', { name, email, password });
+      
+      if (data.success) {
+        toast.success(data.message || 'Registration successful! Please verify your email.');
+        return true;
+      } else {
+        toast.error(data.message || 'Registration failed. Please try again.');
+        return false;
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || 'Registration failed. Please try again.';
       console.error('Registration failed:', error);
-      toast.error('Registration failed. Please try again.');
+      toast.error(`Registration failed: ${errorMessage}`);
       return false;
     }
   };
 
   const verifyEmail = async (email: string, code: string): Promise<boolean> => {
     try {
-      await axios.post('/api/email-verification/verify', { email, code });
-      toast.success('Email verified successfully. You can now log in.');
-      return true;
-    } catch (error) {
+      const { data } = await axios.post('/api/email-verification/verify', { email, code });
+      
+      if (data.verified) {
+        toast.success(data.message || 'Email verified successfully. You can now log in.');
+        return true;
+      } else {
+        toast.error(data.message || 'Email verification failed. Please try again.');
+        return false;
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || 'Email verification failed. Please try again.';
       console.error('Email verification failed:', error);
-      toast.error('Email verification failed. Please try again.');
+      toast.error(`Verification failed: ${errorMessage}`);
       return false;
     }
   };
 
-  const logout = () => {
-    Cookies.remove('token');
-    setUser(null);
-    setIsAuthenticated(false);
+  const logout = useCallback(() => {
+    clearAuthState();
     toast.success('Logged out successfully');
-  };
+  }, [clearAuthState]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated, login, register, logout, verifyEmail }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      isAuthenticated, 
+      login, 
+      register, 
+      logout, 
+      verifyEmail 
+    }}>
       {children}
     </AuthContext.Provider>
   );

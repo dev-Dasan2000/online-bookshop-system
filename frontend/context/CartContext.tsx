@@ -1,7 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import axios from 'axios';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { useAuth } from './AuthContext';
 
@@ -25,33 +24,31 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const CART_STORAGE_KEY = 'cart';
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { isAuthenticated, user } = useAuth();
 
-  // Calculate totals - ensure cartItems is an array before using reduce
-  const totalItems = Array.isArray(cartItems) 
-    ? cartItems.reduce((total, item) => total + item.quantity, 0) 
-    : 0;
+  // Calculate totals using useMemo
+  const totalItems = useMemo(() => 
+    cartItems.reduce((total, item) => total + item.quantity, 0), 
+    [cartItems]
+  );
     
-  const totalPrice = Array.isArray(cartItems) 
-    ? cartItems.reduce((total, item) => total + item.price * item.quantity, 0) 
-    : 0;
+  const totalPrice = useMemo(() => 
+    cartItems.reduce((total, item) => total + item.price * item.quantity, 0),
+    [cartItems]
+  );
 
-  // Load cart from API or local storage
+  // Load cart from local storage on initial load
   useEffect(() => {
-    const loadCart = async () => {
+    const loadCart = () => {
       try {
-        if (isAuthenticated && user) {
-          // Get cart from API if user is logged in
-          const { data } = await axios.get('/api/shopping-cart');
-          // Ensure data is an array before setting
-          setCartItems(Array.isArray(data) ? data : []);
-        } else {
-          // Get cart from local storage if user is not logged in
-          const storedCart = localStorage.getItem('cart');
+        setIsLoading(true);
+        // Get cart from local storage
+        const storedCart = localStorage.getItem(CART_STORAGE_KEY);
           if (storedCart) {
             try {
               const parsedCart = JSON.parse(storedCart);
@@ -59,7 +56,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
             } catch (e) {
               console.error('Failed to parse cart from localStorage:', e);
               setCartItems([]);
-            }
           }
         }
       } catch (error) {
@@ -72,30 +68,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
 
     loadCart();
-  }, [isAuthenticated, user]);
+  }, []);
 
-  // Save cart to API or local storage when it changes
+  // Save cart to local storage when it changes
   useEffect(() => {
     if (!isLoading) {
-      if (isAuthenticated && user) {
-        // Save to API
-        const saveCart = async () => {
-          try {
-            // Ensure cartItems is an array before sending
-            await axios.put('/api/shopping-cart', Array.isArray(cartItems) ? cartItems : []);
-          } catch (error) {
-            console.error('Failed to save cart:', error);
-          }
-        };
-        saveCart();
-      } else {
-        // Save to local storage
-        localStorage.setItem('cart', JSON.stringify(Array.isArray(cartItems) ? cartItems : []));
-      }
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
     }
-  }, [cartItems, isAuthenticated, user, isLoading]);
+  }, [cartItems, isLoading]);
 
-  const addToCart = (item: Omit<CartItem, 'quantity'>) => {
+  const addToCart = useCallback((item: Omit<CartItem, 'quantity'>) => {
     setCartItems(prevItems => {
       // Check if item already exists in cart
       const existingItemIndex = prevItems.findIndex(cartItem => cartItem.id === item.id);
@@ -112,14 +94,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
     
     toast.success('Item added to cart');
-  };
+  }, []);
 
-  const removeFromCart = (id: string) => {
+  const removeFromCart = useCallback((id: string) => {
     setCartItems(prevItems => prevItems.filter(item => item.id !== id));
     toast.info('Item removed from cart');
-  };
+  }, []);
 
-  const updateQuantity = (id: string, quantity: number) => {
+  const updateQuantity = useCallback((id: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(id);
       return;
@@ -130,15 +112,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
         item.id === id ? { ...item, quantity } : item
       )
     );
-  };
+  }, [removeFromCart]);
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCartItems([]);
     toast.info('Cart cleared');
-  };
+  }, []);
 
-  return (
-    <CartContext.Provider value={{ 
+  // Memoize the context value
+  const contextValue = useMemo(() => ({
+    cartItems, 
+    totalItems, 
+    totalPrice, 
+    addToCart, 
+    removeFromCart, 
+    updateQuantity, 
+    clearCart,
+    isLoading
+  }), [
       cartItems, 
       totalItems, 
       totalPrice, 
@@ -147,7 +138,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       updateQuantity, 
       clearCart,
       isLoading
-    }}>
+  ]);
+
+  return (
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );
