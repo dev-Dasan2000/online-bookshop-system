@@ -39,3 +39,11 @@ body {
     @apply bg-white rounded-lg shadow-md p-6;
   }
 } 
+
+.progress-circle {
+  transform: rotate(-90deg);
+}
+
+.progress-bar {
+  transition: stroke-dasharray 0.2s ease;
+}

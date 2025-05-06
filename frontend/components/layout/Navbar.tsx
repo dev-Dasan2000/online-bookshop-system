@@ -142,7 +142,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-white shadow-sm sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-2">
+      <div className="container mx-auto px-2 py-2 md:px-0">
         <div className="flex items-center justify-between">
           <Link href="/" className="text-2xl font-bold text-teal-600 flex items-center gap-2">
             <div className="relative w-8 h-8">
@@ -162,7 +162,7 @@ export default function Navbar() {
           </div>
 
           {/* SearchBar Desktop */}
-          <div className="hidden md:block w-64 mx-4">
+          <div className="hidden md:block w-96 mx-4">
             <SearchBar />
           </div>
 

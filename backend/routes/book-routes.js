@@ -22,7 +22,7 @@ router.get('/', /*authenticateToken,*/ async (req, res) => {
   
       // Shuffle and pick 20 random items
       const shuffled = response.data.items.sort(() => 0.5 - Math.random());
-      const selected = shuffled.slice(0, 20);
+      const selected = shuffled.slice(0, 30);
   
       const books = selected.map(item => ({
         id: item.id,

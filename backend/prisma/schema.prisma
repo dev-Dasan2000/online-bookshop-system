@@ -10,6 +10,7 @@ datasource db {
 model checkout_history {
   email                  String
   book_isbn              String
+  book_name              String
   total_price            Decimal  @db.Decimal(10, 2)
   qty                    Int
   checkout_date_and_time DateTime @db.Timestamp(6)

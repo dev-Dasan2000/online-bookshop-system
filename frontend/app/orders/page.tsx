@@ -12,6 +12,7 @@ interface OrderHistoryItem {
   total_price: number | string;
   qty: number;
   checkout_date_and_time: string;
+  book_name: string;
 }
 
 export default function OrderHistoryPage() {
@@ -123,8 +124,8 @@ export default function OrderHistoryPage() {
               <div className="border-t border-b py-4 my-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <p className="text-sm text-gray-500">ISBN</p>
-                    <p className="font-medium">{order.book_isbn}</p>
+                    <p className="text-sm text-gray-500">Name</p>
+                    <p className="font-medium">{order.book_name}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Quantity</p>

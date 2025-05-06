@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
     
     // Validate required fields
-    const { email, book_isbn, total_price, qty, checkout_date_and_time } = data;
+    const { email, book_isbn, total_price, qty, checkout_date_and_time, book_name } = data;
     
-    if (!email || !book_isbn || total_price === undefined || qty === undefined || !checkout_date_and_time) {
+    if (!email || !book_isbn || total_price === undefined || qty === undefined || !checkout_date_and_time || !book_name) {
       console.error('Missing required fields in checkout history request:', data);
       return NextResponse.json(
         { message: 'Missing required fields' },
@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
       book_isbn,
       total_price: Number(total_price),
       qty: Number(qty),
-      checkout_date_and_time
+      checkout_date_and_time,
+      book_name
     };
     
     console.log(`Sending checkout history to backend at: ${endpoint}`);

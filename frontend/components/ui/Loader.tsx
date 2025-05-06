@@ -1,7 +1,14 @@
 export default function Loader() {
   return (
     <div className="flex justify-center items-center py-8">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
+      <div
+        className="relative inline-block w-12 h-12"
+        role="status"
+        aria-label="Loading"
+      >
+        <span className="absolute inset-0 rounded-full border-4 border-primary-600 opacity-30"></span>
+        <span className="absolute inset-0 rounded-full border-t-4 border-primary-600 animate-spin"></span>
+      </div>
     </div>
   );
-} 
+}
